@@ -1,9 +1,9 @@
 import { menuController } from '../controllers/menuController.js';
-import { rankingController } from '../controllers/apiRankingController.js';
+import { rankingController } from '../controllers/rankingController.js';
 import { jogarController } from '../controllers/JogarController.js';
 import { contaController } from '../controllers/contaController.js';
 import { loginController } from '../controllers/loginController.js';
-import { gameoverController } from '../controllers/gameoverController.js';
+//import { gameoverController } from '../controllers/gameoverController.js';
 
 
 function navegarPara(tela) {
@@ -24,9 +24,9 @@ function navegarPara(tela) {
     else if (tela === 'login') {
         loginController(navegarPara);
     }
-    else if (tela === 'gameover') {
+    /*else if (tela === 'gameover') {
         gameoverController(navegarPara);
-    }
+    }*/
 }
 // Inicia o app chamando a primeira tela
 navegarPara('login');

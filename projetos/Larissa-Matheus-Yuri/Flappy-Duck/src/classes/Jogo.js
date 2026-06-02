@@ -1,18 +1,26 @@
-const tela =
-    document.getElementById(
-        "gameCanvas"
-    );
+import Pato from "./Pato.js";
+import Cano from "./Cano.js";
 
-const contexto =
-    tela.getContext("2d");
+export default class Jogo {
 
-class Jogo {
+    constructor(navegarPara) {
 
-    constructor(){
+        this.navegarPara = navegarPara;
+
+        const tela =
+            document.getElementById(
+                "gameCanvas"
+            );
+
+        const contexto =
+            tela.getContext("2d");
 
         // Canvas
         this.canvas = tela;
         this.ctx = contexto;
+
+        // RAF id for canceling animation frames
+        this.rafId = null;
 
         // Pixel art
         this.ctx.imageSmoothingEnabled =
@@ -41,6 +49,19 @@ class Jogo {
 
         // Controles
         this.configurarControles();
+
+        // Garantir apenas uma instância ativa do jogo na página
+        if(typeof window !== 'undefined'){
+            if(window.__currentJogo && window.__currentJogo !== this){
+                try{
+                    window.__currentJogo.dispose();
+                }catch(e){
+                    console.warn('Erro ao descartar jogo anterior', e);
+                }
+            }
+
+            window.__currentJogo = this;
+        }
     }
 
     carregarImagens(){
@@ -49,21 +70,21 @@ class Jogo {
         this.fundo = new Image();
 
         this.fundo.src =
-            "./img/fundo_if.png";
+            "./images/fundo.png";
 
         // Pato
         this.imagemPato =
             new Image();
 
         this.imagemPato.src =
-            "./img/pato.png";
+            "./images/pato.png";
 
         // Cano
         this.imagemCano =
             new Image();
 
         this.imagemCano.src =
-            "./img/cano.png";
+            "./images/cano.png";
     }
 
     configurarControles(){
@@ -87,6 +108,7 @@ class Jogo {
                         this.pato.pular();
                     }
 
+                    // n sei se deveria acontecer isso
                     // Reiniciar
                     else if(
                         this.estado ===
@@ -102,9 +124,9 @@ class Jogo {
         );
     }
 
-    iniciar(jogador){
+    iniciar(conta){
 
-        this.jogador = jogador;
+        this.jogador = conta;
 
         this.estado = "JOGANDO";
 
@@ -124,10 +146,11 @@ class Jogo {
             this.imagemPato
         );
 
-        // Mostrar tela do jogo
-        ScreenManager.show(
-            "gameScreen"
-        );
+        const mostratelajogo = document.getElementById('gameScreen');
+        mostratelajogo.style.display = 'flex';
+
+        const tirartelagameover = document.getElementById('gameOverScreen');
+        tirartelagameover.style.display = 'none';
 
         // Começar loop imediatamente
         this.loop();
@@ -153,7 +176,7 @@ class Jogo {
         this.desenhar();
 
         // Próximo frame
-        requestAnimationFrame(
+        this.rafId = requestAnimationFrame(
             () => this.loop()
         );
     }
@@ -223,18 +246,20 @@ class Jogo {
             ){
 
                 this.gameOver();
+
+                // Parar processamento deste frame para evitar
+                // que outros canos incrementem a pontuação
+                // ou continuem a atualização após o game over.
+                return;
             }
 
-            // Pontuação
+            // Pontuação (somente se ainda estiver jogando)
             if(
-
+                this.estado === "JOGANDO" &&
                 !cano.passou &&
-
                 cano.x + cano.largura <
                 this.pato.x
-
             ){
-
                 cano.passou = true;
 
                 this.pontuacao++;
@@ -272,6 +297,9 @@ class Jogo {
         ){
 
             this.gameOver();
+
+            // garantir que não continua atualizando neste frame
+            return;
         }
     }
 
@@ -335,11 +363,29 @@ class Jogo {
 
             ){
 
+                // Debug: log positions to help identificar falsos positivos
+                try{
+                    console.debug('VerificarColisao: colisao detectada', {
+                        pato: { x: pato.x, y: pato.y, largura: pato.largura, altura: pato.altura },
+                        cano: { x: cano.x, largura: cano.largura, alturaSuperior: cano.alturaSuperior, espaco: cano.espaco }
+                    });
+                }catch(e){}
+
                 return true;
             }
         }
 
         return false;
+    }
+
+    dispose(){
+        // Forçar parada do loop e marcar como game over
+        this.estado = "GAME_OVER";
+
+        if(this.rafId){
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
     }
 
     desenharGameOver(){
@@ -396,49 +442,47 @@ class Jogo {
         );
     }
 
-    gameOver(){
+    async gameOver(){
 
         this.estado =
             "GAME_OVER";
 
+        if(this.rafId){
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+
         // Atualizar recorde
         if(this.jogador){
 
-            let conta =
-                this.jogador.conta;
+            if(this.pontuacao > this.jogador.pontuacao){
 
-            if(
+                this.jogador.pontuacao = this.pontuacao;
 
-                this.pontuacao >
-                conta.pontuacao
+                try {
+                    const response = await fetch("/game/savescore", {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            id_user: this.jogador.id,
+                            newScore: this.jogador.pontuacao
+                        })
+                    });
 
-            ){
+                    const data = await response.json();
 
-                conta.pontuacao =
-                    this.pontuacao;
-
-                let contas =
-                    Conta.carregar();
-
-                contas = contas.map(c => {
-
-                    if(
-                        c.id ===
-                        conta.id
-                    ){
-
-                        return conta;
+                    if(!response.ok){
+                        alert(data.message);
                     }
-
-                    return c;
-                });
-
-                Conta.salvar(contas);
+                } catch (error) {
+                    console.error(error);
+                }
             }
         }
 
-        // Atualizar ranking
-        Ranking.top10();
+        
 
         // Mostrar tela de game over
         document.getElementById(
@@ -447,10 +491,22 @@ class Jogo {
 
         document.getElementById(
             "bestScore"
-        ).innerText = this.jogador.conta.pontuacao;
+        ).innerText = this.jogador.pontuacao;
 
-        ScreenManager.show(
-            "gameOverScreen"
-        );
+        const tirartelajogo = document.getElementById('gameScreen');
+        tirartelajogo.style.display = 'none';
+
+        const mostrartelagameover = document.getElementById('gameOverScreen');
+        mostrartelagameover.style.display = 'flex';
+
+        document.getElementById(
+            "btn-restart"
+        ).onclick = 
+        () => this.iniciar(this.jogador);
+
+        document.getElementById(
+            "btn-menu"
+        ).onclick =
+        () => this.navegarPara("menu");
     }
-}
+} 
